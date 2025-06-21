@@ -79,54 +79,7 @@ local function apply_fps_filter(target_fps)
     end
 end
 
-local function initial_sample()
-    if not in_initial_sampling then
-        msg.warn("initial_sample called but not in sampling mode")
-        return
-    end
-    -- Check if video is paused
-    local paused = mp.get_property_bool("pause")
-    if paused then
-        -- msg.debug("Video paused during initial sampling, skipping")
-        return
-    end
-    
-    local current_drops = mp.get_property_number("frame-drop-count")
-    if not current_drops then
-        -- msg.warn("Could not get frame drop count during initial sampling")
-        return
-    end
-    local drops_in_last_second = current_drops - last_drop_count
-    table.insert(initial_samples, drops_in_last_second)
-    last_drop_count = current_drops
-    -- msg.info("Initial sample " .. #initial_samples .. "/10: " .. drops_in_last_second .. " drops/sec")
-    mp.osd_message("Sampling performance: " .. #initial_samples .. "/10", 1)
-    
-    if #initial_samples >= config.initial_sample_count then
-        -- Calculate initial target fps
-        local total_drops = 0
-        for _, drops in ipairs(initial_samples) do
-            total_drops = total_drops + drops
-        end
-        local avg_drop_rate = total_drops / config.initial_sample_count
-        local effective_fps = video_fps - avg_drop_rate
-        local target_fps = snap_to_step(effective_fps)
-        -- msg.info("Initial sampling complete. Average drop rate: " .. avg_drop_rate .. ", target fps: " .. target_fps)
-        apply_fps_filter(target_fps)
-        if initial_timer then
-            initial_timer:kill()
-            initial_timer = nil
-        end
-        in_initial_sampling = false
-        initialized = true
-        timer = mp.add_periodic_timer(config.sample_interval, function()
-            check_and_adjust()
-        end)
-        mp.osd_message("Auto fps initialized: " .. target_fps .. "fps", 3)
-    end
-end
-
-local check_and_adjust = function()
+local function check_and_adjust()
     if not initialized then
         msg.debug("check_and_adjust called but not initialized")
         return
@@ -189,6 +142,53 @@ local check_and_adjust = function()
         -- msg.info("Not enough samples yet for adjustment (" .. #drop_samples .. "/3)")
     end
     last_drop_count = current_drops
+end
+
+local function initial_sample()
+    if not in_initial_sampling then
+        msg.warn("initial_sample called but not in sampling mode")
+        return
+    end
+    -- Check if video is paused
+    local paused = mp.get_property_bool("pause")
+    if paused then
+        -- msg.debug("Video paused during initial sampling, skipping")
+        return
+    end
+    
+    local current_drops = mp.get_property_number("frame-drop-count")
+    if not current_drops then
+        -- msg.warn("Could not get frame drop count during initial sampling")
+        return
+    end
+    local drops_in_last_second = current_drops - last_drop_count
+    table.insert(initial_samples, drops_in_last_second)
+    last_drop_count = current_drops
+    -- msg.info("Initial sample " .. #initial_samples .. "/10: " .. drops_in_last_second .. " drops/sec")
+    mp.osd_message("Sampling performance: " .. #initial_samples .. "/10", 1)
+    
+    if #initial_samples >= config.initial_sample_count then
+        -- Calculate initial target fps
+        local total_drops = 0
+        for _, drops in ipairs(initial_samples) do
+            total_drops = total_drops + drops
+        end
+        local avg_drop_rate = total_drops / config.initial_sample_count
+        local effective_fps = video_fps - avg_drop_rate
+        local target_fps = snap_to_step(effective_fps)
+        -- msg.info("Initial sampling complete. Average drop rate: " .. avg_drop_rate .. ", target fps: " .. target_fps)
+        apply_fps_filter(target_fps)
+        if initial_timer then
+            initial_timer:kill()
+            initial_timer = nil
+        end
+        in_initial_sampling = false
+        initialized = true
+        timer = mp.add_periodic_timer(config.sample_interval, function()
+            check_and_adjust()
+        end)
+        mp.osd_message("Auto fps initialized: " .. target_fps .. "fps", 3)
+    end
 end
 
 -- Initialize when file starts playing
